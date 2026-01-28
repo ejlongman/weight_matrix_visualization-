@@ -2,7 +2,7 @@
 
 Interactive 3D visualization showing how the weight matrix affects parameter estimates in Simulated Method of Moments (SMM) estimation.
 
-**[View Live Demo](https://ejlongman.github.io/weight_matrix_visualization-/weights.html)**
+**[View Live Demo](https://ejlongman.github.io/weight_matrix_visualization-/index.html)**
 
 ## Features
 - 3 parameters (α, β, δ) and 3 moment conditions
