@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMM: Moment Conditions in Parameter Space</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; }
+    .container { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 1rem; }
+    .title { font-size: 1.5rem; font-weight: bold; color: white; margin-bottom: 0.5rem; }
+    .subtitle { color: #94a3b8; margin-bottom: 1rem; text-align: center; max-width: 36rem; }
+    .main-content { display: flex; gap: 2rem; flex-wrap: wrap; justify-content: center; }
+    .viz-container { background: #1e293b; border-radius: 0.5rem; padding: 0.5rem; cursor: grab; }
+    .viz-container:active { cursor: grabbing; }
+    .viz-container svg { user-select: none; display: block; }
+    .panel { background: #1e293b; border-radius: 0.5rem; padding: 1rem; width: 18rem; }
+    .panel-title { color: white; font-weight: 600; margin-bottom: 0.75rem; }
+    .panel-title-mt { margin-top: 1.5rem; }
+    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; cursor: pointer; }
+    .checkbox-row input { width: 1rem; height: 1rem; cursor: pointer; }
+    .color-line { width: 1rem; height: 0.25rem; border-radius: 0.125rem; }
+    .checkbox-label { color: #cbd5e1; font-size: 0.875rem; }
+    .weights-box { background: #334155; border-radius: 0.5rem; padding: 1rem; }
+    .weights-label { color: #94a3b8; font-size: 0.75rem; margin-bottom: 0.75rem; }
+    .slider-group { margin-bottom: 1rem; }
+    .slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+    .slider-header-left { display: flex; align-items: center; gap: 0.5rem; }
+    .slider-color { width: 0.75rem; height: 0.25rem; border-radius: 0.125rem; }
+    .slider-name { color: #cbd5e1; font-size: 0.875rem; }
+    .slider-value { font-size: 0.875rem; font-weight: bold; font-family: monospace; }
+    .slider-value-blue { color: #60a5fa; }
+    .slider-value-green { color: #4ade80; }
+    .slider-value-pink { color: #f472b6; }
+    input[type="range"] { width: 100%; cursor: pointer; height: 0.5rem; border-radius: 0.25rem; }
+    .slider-blue { accent-color: #3b82f6; }
+    .slider-green { accent-color: #22c55e; }
+    .slider-pink { accent-color: #ec4899; }
+    .total-row { text-align: center; color: #64748b; font-size: 0.75rem; margin-top: 0.5rem; }
+    .estimates-box { background: #334155; border-radius: 0.5rem; padding: 1rem; margin-top: 1rem; }
+    .estimates-label { color: #94a3b8; font-size: 0.75rem; margin-bottom: 0.75rem; }
+    .estimate-row { display: flex; justify-content: space-between; font-family: monospace; margin-bottom: 0.5rem; }
+    .estimate-row:last-child { margin-bottom: 0; }
+    .estimate-name { color: #94a3b8; }
+    .estimate-value { color: #fbbf24; font-weight: bold; }
+    .info-box { margin-top: 1.5rem; padding: 0.75rem; background: #334155; border-radius: 0.5rem; font-size: 0.75rem; color: #94a3b8; }
+    .info-title { color: #e2e8f0; font-weight: bold; margin-bottom: 0.5rem; }
+    .info-box p { margin-bottom: 0.5rem; }
+    .legend { margin-top: 1rem; display: flex; gap: 1.5rem; font-size: 0.875rem; flex-wrap: wrap; justify-content: center; }
+    .legend-item { display: flex; align-items: center; gap: 0.5rem; }
+    .legend-line { width: 2rem; height: 0.25rem; border-radius: 0.125rem; }
+    .legend-dot { width: 1rem; height: 1rem; border-radius: 50%; }
+    .legend-text { color: #94a3b8; }
+    .bg-blue { background: #3b82f6; }
+    .bg-green { background: #22c55e; }
+    .bg-pink { background: #ec4899; }
+    .bg-yellow { background: #eab308; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const { useState, useMemo, createElement: h } = React;
+    function GMMVisualization() {
+      const [rotation, setRotation] = useState({ x: -0.5, y: 0.5 });
+      const [isDragging, setIsDragging] = useState(false);
+      const [lastMouse, setLastMouse] = useState({ x: 0, y: 0 });
+      const [showMoments, setShowMoments] = useState({ m1: true, m2: true, m3: true });
+      const [zoom, setZoom] = useState(1);
+      const [weights, setWeights] = useState({ w1: 0.4, w2: 0.4, w3: 0.2 });
+      const updateWeight = function(key, newValue) {
+        const oldValue = weights[key];
+        const delta = newValue - oldValue;
+        const otherKeys = Object.keys(weights).filter(function(k) { return k !== key; });
+        const otherSum = otherKeys.reduce(function(sum, k) { return sum + weights[k]; }, 0);
+        if (otherSum === 0) { const newW = { w1: 0, w2: 0, w3: 0 }; newW[key] = 1; setWeights(newW); return; }
+        const newWeights = Object.assign({}, weights);
+        newWeights[key] = newValue;
+        otherKeys.forEach(function(k) { const proportion = weights[k] / otherSum; newWeights[k] = Math.max(0, weights[k] - delta * proportion); });
+        const sum = Object.values(newWeights).reduce(function(a, b) { return a + b; }, 0);
+        Object.keys(newWeights).forEach(function(k) { newWeights[k] = newWeights[k] / sum; });
+        setWeights(newWeights);
+      };
+      const curveTargets = { m1: { alpha: 0.3, beta: 0.6, d: 0.15 }, m2: { alpha: 0.3, beta: 0.6, d: 0.15 }, m3: { alpha: 0.6, beta: 1.3, d: 0.2 } };
+      const estimate = useMemo(function() {
+        return { alpha: weights.w1 * curveTargets.m1.alpha + weights.w2 * curveTargets.m2.alpha + weights.w3 * curveTargets.m3.alpha,
+          beta: weights.w1 * curveTargets.m1.beta + weights.w2 * curveTargets.m2.beta + weights.w3 * curveTargets.m3.beta,
+          d: weights.w1 * curveTargets.m1.d + weights.w2 * curveTargets.m2.d + weights.w3 * curveTargets.m3.d };
+      }, [weights]);
+      const generateMomentCurve = function(momentIndex, numPoints) {
+        numPoints = numPoints || 100;
+        const points = [];
+        const intersectX = 0.3, intersectY = 0.6, intersectZ = 0.15;
+        for (var i = 0; i < numPoints; i++) {
+          var t = (i / (numPoints - 1)) * 2 - 1;
+          var alpha, beta, d;
+          if (momentIndex === 0) { alpha = intersectX + 1.0 * t; beta = intersectY + 0.5 * t; d = intersectZ + 0.2 * t; }
+          else if (momentIndex === 1) { alpha = intersectX + 0.3 * t; beta = intersectY + 0.6 * t; d = intersectZ - 0.3 * t; }
+          else { alpha = intersectX + 0.8 * t + 0.3; beta = intersectY + 0.6 * t * t + 0.7; d = intersectZ + 0.15 * t + 0.05; }
+          beta = Math.max(0.05, beta);
+          points.push({ x: alpha, y: beta, z: d });
+        }
+        return points;
+      };
+      const momentCurves = useMemo(function() {
+        return [
+          { points: generateMomentCurve(0), color: '#3b82f6', label: 'E[g₁(θ)] = 0' },
+          { points: generateMomentCurve(1), color: '#22c55e', label: 'E[g₂(θ)] = 0' },
+          { points: generateMomentCurve(2), color: '#ec4899', label: 'E[g₃(θ)] = 0' }
+        ];
+      }, []);
+      const project = function(x, y, z) {
+        var cosX = Math.cos(rotation.x), sinX = Math.sin(rotation.x);
+        var cosY = Math.cos(rotation.y), sinY = Math.sin(rotation.y);
+        var x1 = x * cosY - z * sinY; var z1 = x * sinY + z * cosY;
+        var y1 = y * cosX - z1 * sinX; var z2 = y * sinX + z1 * cosX;
+        var scale = 80 * zoom; var perspective = 5; var factor = perspective / (perspective + z2);
+        return { x: 250 + x1 * scale * factor, y: 250 - y1 * scale * factor, z: z2 };
+      };
+      const handleMouseDown = function(e) { setIsDragging(true); setLastMouse({ x: e.clientX, y: e.clientY }); };
+      const handleMouseMove = function(e) {
+        if (!isDragging) return;
+        var dx = e.clientX - lastMouse.x; var dy = e.clientY - lastMouse.y;
+        setRotation(function(prev) { return { x: prev.x + dy * 0.01, y: prev.y + dx * 0.01 }; });
+        setLastMouse({ x: e.clientX, y: e.clientY });
+      };
+      const handleMouseUp = function() { setIsDragging(false); };
+      const handleWheel = function(e) { e.preventDefault(); setZoom(function(prev) { return Math.max(0.5, Math.min(2, prev - e.deltaY * 0.001)); }); };
+      var p1 = project(0, 0, 0), p2 = project(2.2, 0, 0), p3 = project(0, 2.2, 0), p4 = project(0, 0, 2.2);
+      var pL1 = project(2.4, 0, 0), pL2 = project(0, 2.4, 0), pL3 = project(0, 0, 2.4);
+      var projEst = project(estimate.alpha, estimate.beta, estimate.d);
+      var getCurvePath = function(points) {
+        return points.map(function(p, i) { var proj = project(p.x, p.y, p.z); return (i === 0 ? 'M' : 'L') + ' ' + proj.x + ' ' + proj.y; }).join(' ');
+      };
+      return h('div', { className: 'container' },
+        h('h1', { className: 'title' }, 'SMM: Moment Conditions in Parameter Space'),
+        h('p', { className: 'subtitle' }, 'You have 3 parameters (α, β, δ) and 3 moment conditions. Each curve shows where a moment condition E[gᵢ(θ)] = 0. Adjust the weights to see how the weight matrix affects parameter estimates.'),
+        h('div', { className: 'main-content' },
+          h('div', { className: 'viz-container', onMouseDown: handleMouseDown, onMouseMove: handleMouseMove, onMouseUp: handleMouseUp, onMouseLeave: handleMouseUp, onWheel: handleWheel },
+            h('svg', { width: 500, height: 500 },
+              h('defs', null,
+                h('marker', { id: 'arrowhead', markerWidth: 10, markerHeight: 7, refX: 9, refY: 3.5, orient: 'auto' }, h('polygon', { points: '0 0, 10 3.5, 0 7', fill: '#94a3b8' })),
+                h('filter', { id: 'glow' }, h('feGaussianBlur', { stdDeviation: 3, result: 'coloredBlur' }), h('feMerge', null, h('feMergeNode', { in: 'coloredBlur' }), h('feMergeNode', { in: 'SourceGraphic' })))),
+              h('rect', { x: 0, y: 0, width: 500, height: 500, fill: '#1e293b', rx: 8 }),
+              h('line', { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, stroke: '#94a3b8', strokeWidth: 2, markerEnd: 'url(#arrowhead)' }),
+              h('line', { x1: p1.x, y1: p1.y, x2: p3.x, y2: p3.y, stroke: '#94a3b8', strokeWidth: 2, markerEnd: 'url(#arrowhead)' }),
+              h('line', { x1: p1.x, y1: p1.y, x2: p4.x, y2: p4.y, stroke: '#94a3b8', strokeWidth: 2, markerEnd: 'url(#arrowhead)' }),
+              h('text', { x: pL1.x, y: pL1.y, fill: '#94a3b8', fontSize: 18, fontWeight: 'bold', fontStyle: 'italic' }, 'α'),
+              h('text', { x: pL2.x, y: pL2.y, fill: '#94a3b8', fontSize: 18, fontWeight: 'bold', fontStyle: 'italic' }, 'β'),
+              h('text', { x: pL3.x, y: pL3.y, fill: '#94a3b8', fontSize: 18, fontWeight: 'bold', fontStyle: 'italic' }, 'δ'),
+              h('circle', { cx: p1.x, cy: p1.y, r: 3, fill: '#64748b' }),
+              showMoments.m1 && h('path', { d: getCurvePath(momentCurves[0].points), fill: 'none', stroke: '#3b82f6', strokeWidth: 3, strokeLinecap: 'round' }),
+              showMoments.m2 && h('path', { d: getCurvePath(momentCurves[1].points), fill: 'none', stroke: '#22c55e', strokeWidth: 3, strokeLinecap: 'round' }),
+              showMoments.m3 && h('path', { d: getCurvePath(momentCurves[2].points), fill: 'none', stroke: '#ec4899', strokeWidth: 3, strokeLinecap: 'round' }),
+              h('g', { filter: 'url(#glow)' }, h('circle', { cx: projEst.x, cy: projEst.y, r: 8, fill: '#fbbf24', stroke: 'white', strokeWidth: 2 })),
+              h('text', { x: projEst.x + 12, y: projEst.y - 8, fill: '#fbbf24', fontSize: 12, fontWeight: 'bold' }, 'θ̂'),
+              h('text', { x: 10, y: 485, fill: '#64748b', fontSize: 12 }, 'Drag to rotate • Scroll to zoom'))),
+          h('div', { className: 'panel' },
+            h('h3', { className: 'panel-title' }, 'Moment Conditions'),
+            [0, 1, 2].map(function(i) {
+              return h('label', { key: i, className: 'checkbox-row' },
+                h('input', { type: 'checkbox', checked: showMoments['m' + (i + 1)], onChange: function(e) { var key = 'm' + (i + 1); setShowMoments(function(prev) { var next = Object.assign({}, prev); next[key] = e.target.checked; return next; }); } }),
+                h('span', { className: 'color-line', style: { backgroundColor: momentCurves[i].color } }),
+                h('span', { className: 'checkbox-label' }, momentCurves[i].label)); }),
+            h('h3', { className: 'panel-title panel-title-mt' }, 'Choose Weight Matrix'),
+            h('div', { className: 'weights-box' },
+              h('p', { className: 'weights-label' }, 'How much do you care about each moment?'),
+              h('div', { className: 'slider-group' }, h('div', { className: 'slider-header' }, h('div', { className: 'slider-header-left' }, h('span', { className: 'slider-color', style: { backgroundColor: '#3b82f6' } }), h('span', { className: 'slider-name' }, 'Moment 1')), h('span', { className: 'slider-value slider-value-blue' }, (weights.w1 * 100).toFixed(0) + '%')), h('input', { type: 'range', min: 0, max: 1, step: 0.01, value: weights.w1, className: 'slider-blue', onChange: function(e) { updateWeight('w1', parseFloat(e.target.value)); } })),
+              h('div', { className: 'slider-group' }, h('div', { className: 'slider-header' }, h('div', { className: 'slider-header-left' }, h('span', { className: 'slider-color', style: { backgroundColor: '#22c55e' } }), h('span', { className: 'slider-name' }, 'Moment 2')), h('span', { className: 'slider-value slider-value-green' }, (weights.w2 * 100).toFixed(0) + '%')), h('input', { type: 'range', min: 0, max: 1, step: 0.01, value: weights.w2, className: 'slider-green', onChange: function(e) { updateWeight('w2', parseFloat(e.target.value)); } })),
+              h('div', { className: 'slider-group' }, h('div', { className: 'slider-header' }, h('div', { className: 'slider-header-left' }, h('span', { className: 'slider-color', style: { backgroundColor: '#ec4899' } }), h('span', { className: 'slider-name' }, 'Moment 3')), h('span', { className: 'slider-value slider-value-pink' }, (weights.w3 * 100).toFixed(0) + '%')), h('input', { type: 'range', min: 0, max: 1, step: 0.01, value: weights.w3, className: 'slider-pink', onChange: function(e) { updateWeight('w3', parseFloat(e.target.value)); } })),
+              h('div', { className: 'total-row' }, 'Total: ' + ((weights.w1 + weights.w2 + weights.w3) * 100).toFixed(0) + '%')),
+            h('div', { className: 'estimates-box' },
+              h('p', { className: 'estimates-label' }, 'Resulting Parameter Estimates'),
+              h('div', { className: 'estimate-row' }, h('span', { className: 'estimate-name' }, 'α ='), h('span', { className: 'estimate-value' }, estimate.alpha.toFixed(3))),
+              h('div', { className: 'estimate-row' }, h('span', { className: 'estimate-name' }, 'β ='), h('span', { className: 'estimate-value' }, estimate.beta.toFixed(3))),
+              h('div', { className: 'estimate-row' }, h('span', { className: 'estimate-name' }, 'δ ='), h('span', { className: 'estimate-value' }, estimate.d.toFixed(3)))),
+            h('div', { className: 'info-box' }, h('p', { className: 'info-title' }, 'SMM Intuition:'), h('p', null, 'Each curve represents parameter values that set one simulated moment equal to its data counterpart.'), h('p', null, 'The weight matrix W determines how to optimally combine the moments, yielding different estimates.')))),
+        h('div', { className: 'legend' },
+          h('div', { className: 'legend-item' }, h('div', { className: 'legend-line bg-blue' }), h('span', { className: 'legend-text' }, 'Moment 1')),
+          h('div', { className: 'legend-item' }, h('div', { className: 'legend-line bg-green' }), h('span', { className: 'legend-text' }, 'Moment 2')),
+          h('div', { className: 'legend-item' }, h('div', { className: 'legend-line bg-pink' }), h('span', { className: 'legend-text' }, 'Moment 3')),
+          h('div', { className: 'legend-item' }, h('div', { className: 'legend-dot bg-yellow' }), h('span', { className: 'legend-text' }, 'SMM Estimate θ̂'))));
+    }
+    ReactDOM.render(React.createElement(GMMVisualization), document.getElementById('root'));
+  </script>
+</body>
+</html>
